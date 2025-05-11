@@ -826,3 +826,7 @@ const VWorldMap = () => {
 };
 
 export default VWorldMap; // React 컴포넌트 내보내기
+
+
+
+// 커밋 테스트
