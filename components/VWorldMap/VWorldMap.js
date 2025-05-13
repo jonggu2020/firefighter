@@ -24,7 +24,6 @@ import { mountainStationsData } from './mountainStations'; // 이 파일이 존�
 import { fetchWeatherData } from './weatherService'; // 이 파일이 존재하고 올바른 함수를 export하는지 확인
 
 // 자식 컴포넌트 import
-import LayerControlPanel from './LayerControlPanel';
 import Legend from './Legend';
 
 // --- WeatherDisplay 컴포넌트 정의 (별도 파일로 분리 권장) ---
@@ -267,11 +266,103 @@ const VWorldMap = () => {
         setVisibleLegendTypes(currentlyVisibleTypes);
     }, [layerVisibility]);
 
-    useEffect(() => { /* 토양 CQL 필터 */ }, [activeSoilCodeFilter]);
-    useEffect(() => { /* 임상도 CQL 필터 */ }, [activeImsangdoCodeFilter]);
-    useEffect(() => { /* 토양 투명도 */ }, [soilOpacity]);
-    useEffect(() => { /* 임상도 투명도 */ }, [imsangdoOpacity]);
-    useEffect(() => { /* 등산로 투명도 */ }, [hikingTrailOpacity]);
+    // 토양 CQL 필터 업데이트 useEffect
+    useEffect(() => {
+        if (!olMapRef.current || Object.keys(layerRefs.current).length === 0) return;
+        let cqlFilter = undefined;
+        if (activeSoilCodeFilter && activeSoilCodeFilter.length > 0) {
+            const quotedCodes = activeSoilCodeFilter.map(code => `'${code}'`).join(',');
+            cqlFilter = `SLTP_CD IN (${quotedCodes})`; // 속성명 확인 필요
+        }
+        const soilGroup = logicalLayersConfig.find(group => group.type === 'soil');
+        if (soilGroup) {
+            soilGroup.layerNames.forEach(individualLayerName => {
+                const layer = layerRefs.current[individualLayerName];
+                if (layer) {
+                    const source = layer.getSource();
+                    const params = source.getParams();
+                    if (cqlFilter !== undefined) {
+                        params.CQL_FILTER = cqlFilter;
+                    } else {
+                        delete params.CQL_FILTER;
+                    }
+                    source.updateParams(params);
+                }
+            });
+        }
+    }, [activeSoilCodeFilter]); // activeSoilCodeFilter 변경 시 실행
+
+    // 임상도 CQL 필터 업데이트 useEffect
+    useEffect(() => {
+        if (!olMapRef.current || Object.keys(layerRefs.current).length === 0) return;
+        let cqlFilter = undefined;
+        if (activeImsangdoCodeFilter && activeImsangdoCodeFilter.length > 0) {
+            const quotedCodes = activeImsangdoCodeFilter.map(code => `'${code}'`).join(',');
+            const imsangdoAttributeName = 'FRTP_CD'; // 속성명 확인 필요
+            cqlFilter = `${imsangdoAttributeName} IN (${quotedCodes})`;
+        }
+         const imsangdoGroup = logicalLayersConfig.find(group => group.type === 'imsangdo');
+        if (imsangdoGroup) {
+            imsangdoGroup.layerNames.forEach(individualLayerName => {
+                 const layer = layerRefs.current[individualLayerName];
+                if (layer) {
+                    const source = layer.getSource();
+                    const params = source.getParams();
+                    if (cqlFilter !== undefined) {
+                        params.CQL_FILTER = cqlFilter;
+                    } else {
+                        delete params.CQL_FILTER;
+                    }
+                    source.updateParams(params);
+                }
+            });
+        }
+    }, [activeImsangdoCodeFilter]); // activeImsangdoCodeFilter 변경 시 실행
+
+    // 토양 투명도 업데이트 useEffect
+    useEffect(() => {
+        if (!olMapRef.current || Object.keys(layerRefs.current).length === 0) return;
+        const soilGroup = logicalLayersConfig.find(group => group.type === 'soil');
+        if (soilGroup) {
+            soilGroup.layerNames.forEach(individualLayerName => {
+                const layer = layerRefs.current[individualLayerName];
+                if (layer) layer.setOpacity(soilOpacity);
+            });
+        }
+    }, [soilOpacity]); // soilOpacity 변경 시 실행
+
+    // 임상도 투명도 업데이트 useEffect
+     useEffect(() => {
+        if (!olMapRef.current || Object.keys(layerRefs.current).length === 0) return;
+        const imsangdoGroup = logicalLayersConfig.find(group => group.type === 'imsangdo');
+        if (imsangdoGroup) {
+            imsangdoGroup.layerNames.forEach(individualLayerName => {
+                const layer = layerRefs.current[individualLayerName];
+                if (layer) layer.setOpacity(imsangdoOpacity);
+            });
+        }
+    }, [imsangdoOpacity]); // imsangdoOpacity 변경 시 실행
+
+    // 등산로 투명도 업데이트 useEffect
+    useEffect(() => {
+        if (!olMapRef.current || Object.keys(layerRefs.current).length === 0) return;
+        const hikingTrailGroup = logicalLayersConfig.find(group => group.type === 'hiking_trail');
+        if (hikingTrailGroup) {
+            const vectorLayer = layerRefs.current[hikingTrailGroup.name];
+            if (vectorLayer) vectorLayer.setOpacity(hikingTrailOpacity);
+        }
+    }, [hikingTrailOpacity]); // hikingTrailOpacity 변경 시 실행
+
+    const handleOpacityChange = (groupType, event) => {
+        const value = parseFloat(event.target.value);
+        if (groupType === 'soil') {
+        setSoilOpacity(value);
+        } else if (groupType === 'imsangdo') {
+        setImsangdoOpacity(value);
+        } else if (groupType === 'hiking_trail') {
+        setHikingTrailOpacity(value);
+        }
+    };
 
     const handleToggleVisibility = (groupName) => { /* 이전과 동일 */
         setLayerVisibility(prevVisibility => {
@@ -288,25 +379,42 @@ const VWorldMap = () => {
             return newVisibility;
         });
     };
-    const handleOpacityChange = (groupType, event) => { /* 이전과 동일 */ };
-    const handleSoilLegendItemClick = (code) => { /* 이전과 동일 */ };
+
+    const handleSoilLegendItemClick = (code) => {
+        setActiveSoilCodeFilter(prevFilter => {
+            const newFilter = [...prevFilter];
+            const codeIndex = newFilter.indexOf(code);
+            if (codeIndex > -1) newFilter.splice(codeIndex, 1);
+            else newFilter.push(code);
+            newFilter.sort((a, b) => parseInt(a, 10) - parseInt(b, 10)); // 정렬
+            return newFilter;
+        });
+    };
+
     const handleShowAllSoilClick = () => setActiveSoilCodeFilter([]);
-    const handleImsangdoLegendItemClick = (code) => { /* 이전과 동일 */ };
+
+    const handleImsangdoLegendItemClick = (code) => {
+         setActiveImsangdoCodeFilter(prevFilter => {
+            const newFilter = [...prevFilter];
+            const codeIndex = newFilter.indexOf(code);
+            if (codeIndex > -1) newFilter.splice(codeIndex, 1);
+            else newFilter.push(code);
+            newFilter.sort((a, b) => parseInt(a, 10) - parseInt(b, 10)); // 정렬
+            return newFilter;
+        });
+    };
+
     const handleShowAllImsangdoClick = () => setActiveImsangdoCodeFilter([]);
-    const toggleLegendCollapse = (type) => { /* 이전과 동일 */ };
+
+    const toggleLegendCollapse = (type) => {
+        if (type === 'soil' || type === 'imsangdo') {
+            setCollapsedLegends(prevState => ({ ...prevState, [type]: !prevState[type] }));
+        }
+    };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-            <LayerControlPanel
-                logicalLayersConfig={logicalLayersConfig}
-                layerVisibility={layerVisibility}
-                soilOpacity={soilOpacity}
-                imsangdoOpacity={imsangdoOpacity}
-                hikingTrailOpacity={hikingTrailOpacity}
-                onToggleVisibility={handleToggleVisibility}
-                onOpacityChange={handleOpacityChange}
-            />
-            <div ref={mapRef} style={{ width: '100%', flexGrow: 1, position: 'relative' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+            <div ref={mapRef} style={{ width: '100%', height: 'calc(100vh - 50px)' }}>
                 <Legend
                     visibleLegendTypes={visibleLegendTypes}
                     collapsedLegends={collapsedLegends}
@@ -317,6 +425,14 @@ const VWorldMap = () => {
                     onShowAllSoilClick={handleShowAllSoilClick}
                     onImsangdoLegendItemClick={handleImsangdoLegendItemClick}
                     onShowAllImsangdoClick={handleShowAllImsangdoClick}
+                    // ▶️ 추가된 props
+                    logicalLayersConfig={logicalLayersConfig}
+                    layerVisibility={layerVisibility}
+                    soilOpacity={soilOpacity}
+                    imsangdoOpacity={imsangdoOpacity}
+                    hikingTrailOpacity={hikingTrailOpacity}
+                    onToggleVisibility={handleToggleVisibility}
+                    onOpacityChange={handleOpacityChange}
                 />
                 <WeatherDisplay selectedStationInfo={selectedStation} />
             </div>
