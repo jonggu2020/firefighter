@@ -1,6 +1,6 @@
-// src/components/VWorldMap/Legend.js
+// src/components/Legend.js
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 // 범례 표시에 필요한 상수들을 mapConfig.js 에서 직접 가져옵니다.
 import {
     soilColorMap,
@@ -20,25 +20,70 @@ const Legend = ({
     onShowAllSoilClick,         // 토양 '모두 표시' 클릭 핸들러 함수
     onImsangdoLegendItemClick,  // 임상도 범례 항목 클릭 핸들러 함수
     onShowAllImsangdoClick,     // 임상도 '모두 표시' 클릭 핸들러 함수
+    // 아래 4개: 체크박스 관련 props
+    logicalLayersConfig,
+    layerVisibility,
+    soilOpacity,
+    imsangdoOpacity,
+    hikingTrailOpacity,
+    onToggleVisibility,
+    onOpacityChange,
 }) => {
+
+    // 드래그 기능을 위한 상태 및 ref
+    const legendRef = useRef(null);
+    const [position, setPosition] = useState({ top: 100, left: 10 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+    // 드래그 시작 핸들러
+    const handleMouseDown = (e) => {
+        e.preventDefault();
+        if (!legendRef.current) return;
+        setIsDragging(true);
+        const rect = legendRef.current.getBoundingClientRect();
+        setDragOffset({
+            x: e.clientX - position.left,
+            y: e.clientY - position.top
+        });
+    };
+
+    // 마우스 이동, 해제 이벤트 등록
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isDragging) return;
+            setPosition({ top: e.clientY - dragOffset.y, left: e.clientX - dragOffset.x });
+        };
+        const handleMouseUp = () => setIsDragging(false);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDragging, dragOffset]);
 
     // 스타일 객체는 이 컴포넌트 내에서 정의하거나 props로 받을 수 있습니다.
     // 여기서는 내부에서 정의하는 것으로 가정합니다.
     const legendContainerStyle = {
         position: 'absolute',
-        bottom: '10px',
-        left: '10px',
+        top: 0,
+        left: 0,
+        transform: `translate(${position.left}px, ${position.top}px)`,
+        willChange: 'transform',
         zIndex: 100,
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         padding: '10px',
         border: '1px solid #ccc',
         borderRadius: '5px',
-        maxHeight: '80vh',
+        width: '250px',
+        maxHeight: '75vh',
         overflowY: 'auto',
         fontSize: '12px',
         color: '#333',
         textAlign: 'left',
         pointerEvents: 'auto', // 범례 클릭 가능하도록
+        cursor: isDragging ? 'grabbing' : 'default',
     };
 
     const colorSwatchStyle = {
@@ -50,13 +95,74 @@ const Legend = ({
         flexShrink: 0
     };
 
-    // visibleLegendTypes가 없거나 비어있으면 범례 자체를 렌더링하지 않음
-    if (!visibleLegendTypes || visibleLegendTypes.length === 0) {
-        return null;
-    }
+    // visibleLegendTypes가 없거나 비어있으면 범례 자체를 렌더링하지 않음 (불편하다고 생각함)
+    // if (!visibleLegendTypes || visibleLegendTypes.length === 0) {
+    //     return null;
+    // }
 
     return (
-        <div style={legendContainerStyle}>
+        <div ref={legendRef} style={legendContainerStyle}>
+            {/* 드래그 핸들바 */}
+            <div
+                onMouseDown={handleMouseDown}
+                style={{ cursor: 'grab', userSelect: 'none', textAlign: 'center', marginBottom: '8px' }}
+            >
+                ☰
+            </div>
+            {/* 체크박스 + 슬라이더 영역 */}
+            <div style={{ marginBottom: '15px' }}>
+            <h4 style={{ marginBottom: '5px' }}>레이어 선택 및 투명도 조절</h4>
+            {logicalLayersConfig.map(groupConfig => (
+                <div key={groupConfig.name} style={{ marginBottom: '8px' }}>
+                {/* 체크박스 */}
+                <label style={{ marginRight: '10px' }}>
+                    <input
+                    type="checkbox"
+                    checked={layerVisibility?.[groupConfig.name] || false}
+                    onChange={() => onToggleVisibility(groupConfig.name)}
+                    style={{ marginRight: '5px' }}
+                    />
+                    {groupConfig.name}
+                </label>
+
+                {/* 투명도 슬라이더 */}
+                {layerVisibility?.[groupConfig.name] && groupConfig.type !== 'mountain_station_markers' && (
+                    <div style={{ display: 'inline-block', marginLeft: '10px' }}>
+                    <label htmlFor={`opacity-${groupConfig.type}`} style={{ marginRight: '5px', fontSize: '11px' }}>
+                        투명도:
+                    </label>
+                    <input
+                        id={`opacity-${groupConfig.type}`}
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={
+                        groupConfig.type === 'soil'
+                            ? soilOpacity
+                            : groupConfig.type === 'imsangdo'
+                            ? imsangdoOpacity
+                            : hikingTrailOpacity
+                        }
+                        onChange={(event) => onOpacityChange(groupConfig.type, event)}
+                        style={{ width: '100px', verticalAlign: 'middle' }}
+                    />
+                    <span style={{ marginLeft: '5px', fontSize: '11px' }}>
+                        {(
+                        groupConfig.type === 'soil'
+                            ? soilOpacity
+                            : groupConfig.type === 'imsangdo'
+                            ? imsangdoOpacity
+                            : hikingTrailOpacity
+                        ).toFixed(2)}
+                    </span>
+                    </div>
+                )}
+                </div>
+            ))}
+            <div style={{ borderBottom: '1px solid #ccc', margin: '10px 0' }}></div>
+            </div>
+
             <h4>범례</h4>
 
             {/* 토양 범례 섹션 */}
